@@ -1,0 +1,234 @@
+
+# Reglas completas para proyectos Flutter + Supabase + Riverpod (adaptadas y consolidadas)
+
+========================================================================
+INSTRUCCIONES GENERALES PARA CURSOR AI (ENFORCEMENT)
+========================================================================
+- Antes de ejecutar un patch grande: 1) proponer la(s) modificación(es) en texto, 2) mostrar diff (parches propuestos), 3) esperar confirmación humana, 4) aplicar patch.
+- NO crear ni insertar secrets (.env, keys, credentials) en el repo.
+- NO modificar archivos fuera del scope indicado en el prompt sin confirmación.
+- Evitar "alucinaciones": no añadir código que requiera credenciales, acceso infra, o cambios en configuración del proyecto Supabase sin revisión.
+- No reescribir archivos completos salvo que se solicite explícitamente ("Rewrite file X fully").
+- Mantener commits atómicos y PRs pequeños; no mezclar refactor + feature en un mismo patch.
+
+========================================================================
+ESTRUCTURA PROYECTO (FEATURE-FIRST)
+========================================================================
+Estructura base recomendada (obligatoria en wording):
+
+lib/
+ ├─ core/                → configuración global, inicialización, temas, logging
+ │   ├─ auth/             → auth repository global, providers de auth (supabase client provider)
+ │   ├─ ui/               → design system (AppColors, AppText, AppSpacing, ...)
+ │   └─ config.dart
+ ├─ features/
+ │   ├─ <feature_name>/
+ │   │   ├─ data/
+ │   │   │   ├─ datasource/
+ │   │   │   └─ repositories/
+ │   │   ├─ domain/
+ │   │   │   ├─ models/
+ │   │   │   ├─ usecases/
+ │   │   └─ presentation/
+ │   │       ├─ providers/    (riverpod providers)
+ │   │       └─ ui/           (pages/widgets)
+ ├─ shared/              → widgets y utilidades compartidas entre features
+ └─ infra/               → migrations, scripts, infra-as-code (no secrets)
+
+Regla: Cada feature debe ser autocontenida en su carpeta; no mezclar código de otras features dentro de una carpeta feature.
+
+========================================================================
+ESTRUCTURA BASE DEL PROYECTO
+========================================================================
+
+Organiza el código en tres directorios principales:
+
+lib/
+├── core/            → Configuración global y lógica transversal
+├── features/        → Cada funcionalidad o módulo de negocio
+├── shared/          → Reutilizables comunes entre features
+
+------------------------------------------------------------
+core/
+------------------------------------------------------------
+Contiene código reutilizable o transversal al sistema:
+
+- config/        → Rutas, ambiente, entorno
+- error/         → Manejo de errores y excepciones
+- network/       → Supabase client, detectores de red
+- services/      → Servicios comunes (auth, local storage, etc.)
+- usecases/      → Casos de uso genéricos (opcional)
+- utils/         → Funciones utilitarias
+
+------------------------------------------------------------
+features/
+------------------------------------------------------------
+Cada feature contiene tres capas:
+
+features/[feature_name]/
+├── data/
+│   ├── datasources/
+│   ├── models/
+│   └── repositories/
+├── domain/
+│   ├── entities/
+│   ├── repositories/
+│   └── usecases/
+└── presentation/
+    ├── pages/
+    ├── widgets/
+    ├── providers/
+    └── controllers/ (opcional)
+
+------------------------------------------------------------
+shared/
+------------------------------------------------------------
+Componentes y utilidades reutilizables:
+
+- widgets/        → CustomButton, LoadingIndicator, etc.
+- themes/         → Colores, tipografías, app_theme.dart
+- constants/      → Strings, assets, tamaños en k_sizes.dart
+- extensions/     → Métodos útiles para String, DateTime, etc.
+- mixins/         → Lógica reutilizable por composición
+- helpers/        → SnackbarHelper, DialogHelper, etc.
+
+========================================================================
+3. BUENAS PRÁCTICAS DE CÓDIGO
+========================================================================
+
+- Usa `const` en widgets donde sea posible
+- Mantén las funciones cortas (menos de 20 líneas)
+- Declara siempre tipos (evita `var`, `dynamic`)
+- Evita anidar bloques lógicamente: usa returns tempranos
+- Divide lógica larga en funciones pequeñas
+- Usa nombres completos, sin abreviaturas ambiguas
+- Cada archivo debe tener una sola clase o propósito
+- Evita árboles de widgets demasiado profundos
+
+========================================================================
+RESPONSABILIDADES POR CAPA (SINGLE RESPONSIBILITY)
+========================================================================
+- UI / presentation (pages, widgets)
+  - Solo presentación y enlace a providers.
+  - No usar Supabase client directamente.
+  - No contener lógica de negocio (solo UI state, validaciones visuales).
+- providers (Riverpod)
+  - Exponer estado, commands y side-effects controlados.
+  - Usar AsyncNotifier/Notifier/StateNotifier según convenga.
+  - No contener acceso directo a la BD; inyectar usecases o repositorios.
+- domain / usecases
+  - Lógica de negocio pura; orquestación entre repositorios.
+- repositories
+  - Contratos y coordinación entre usecases y datasources.
+- datasources
+  - Única capa que interactúa con SupabaseClient (a través de provider core).
+  - Implementaciones concretas de acceso remoto (queries, realtime subscribe).
+- core/config
+  - Inicialización de Supabase client provider, logging, constantes y temas.
+- infra/db (migrations/schemas)
+  - Declaraciones SQL, migraciones y scripts. Cambios a DB solo por migración.
+
+========================================================================
+RIVERPOD (OBLIGATORIO - CODEGEN)
+========================================================================
+- ÚNICAMENTE Riverpod con anotaciones (`@riverpod`) para codegen.
+- Mantener providers por feature y con nombres claros: `final userRepositoryProvider = Provider<UserRepository>((ref) => ...);`
+- Providers deben ser puros y deterministas. Efectos y llamadas a Supabase en usecases o en AsyncNotifiers controlados.
+- Los Notifiers/AsyncNotifiers no deben ejecutar acciones costosas en el constructor; usar métodos `init()` o `load()` asincrónicos.
+- Los providers que realizan llamadas a la red deben exponer estados `AsyncValue<T>` y manejar errores de forma centralizada.
+
+========================================================================
+CI/CD, ANALISIS ESTATICO Y QA
+========================================================================
+- Integrar checks en CI:
+  - `dart analyze`
+  - `flutter format` y linters (flutter_lints o reglas del proyecto)
+  - tests unitarios y widget tests
+  - coverage mínimo definido por el equipo
+  - verificación de que no existan keys/anon keys en el repo
+- Automatizar dependabot/renovate para mantener dependencias actualizadas y revisar changelogs antes de updates.
+- En producción: Crashlytics / Sentry + métricas de performance.
+
+========================================================================
+UI / UX — DIRECTRICES OPERATIVAS (mobile + web)
+========================================================================
+- Mantener jerarquía visual clara en cada pantalla.
+- Consistencia visual entre features (colores, tipografía, spacing).
+- Animaciones: intencionales y sutiles; evitar jank; preferir animaciones nativas de Flutter (implicit/explicit animations).
+- Cargar imágenes optimizadas (cache, `precacheImage`, lazy loading).
+- Accesibilidad mínima: contrast ratio adecuado (WCAG AA), focus states, labels accesibles.
+- Mostrar estados de carga y error explícitos (spinners, placeholders, retry).
+- Formularios: validación inline y mensajes de error claros.
+- Navegación: consistente y predecible (bottom nav / drawer / tabs según plataforma).
+- Touch targets: asegurar tamaño mínimo equivalente a 44x44 px táctiles.
+
+========================================================================
+UI / UX — LEYES Y CONVENCIONES (PREFERIDAS / P)
+========================================================================
+- Preferir espaciados en múltiplos de 4 u 8 (8-point grid) para padding/margin.
+- Preferir iniciar flows con la acción principal visible y singular (Ley de Hick).
+- Preferir patrones ya conocidos del usuario (Ley de Jakob) antes que inventar interacciones nuevas.
+- Para UI compleja: dividir diseño en componentes pequeños y validarlos incrementalmente; no generar pantallas completas en un solo patch.
+- Cuando Cursor proponga UI crítica (flows), sugerir máximo 2 variantes para evaluación humana.
+
+========================================================================
+DESIGN SYSTEM — NOMENCLATURA PREFERIDA (P)
+========================================================================
+Prefijos y convenciones (usar siempre estos nombres cuando se generen styles/components):
+
+- AppColors           (ej. AppColors.primary, AppColors.error)
+- AppText             (ej. AppText.h1, AppText.bodySm)
+- AppIcons            (ej. AppIcons.menu, AppIcons.warning)
+- AppSpacing          (AppSpacing.xs, .sm, .md, .lg, .xl, .xxl)
+- AppRadius           (AppRadius.sm, .md, .lg)
+- AppButtons          (prefijo plural — ej. AppButtons.primary)
+- AppCard             (ej. AppCard.info)
+
+Tamaños base sugeridos (alineados al 8-point grid):
+- xs  = 4
+- sm  = 8
+- md  = 12
+- lg  = 16
+- xl  = 24
+- xxl = 32
+
+Regla: Cursor y cualquier plantilla/AI debe usar estos prefijos; **no inventar nombres** para componentes primarios.
+
+========================================================================
+CONVENCIONES DE CÓDIGO DART / FLUTTER
+========================================================================
+- No usar `print()`; usar `debugPrint()` o logger estructurado.
+- Preferir `const` donde sea posible.
+- Preferir `final` en vez de variables mutables cuando aplique.
+- Evitar código "ingenioso"; priorizar legibilidad.
+- No bloquear el main isolate; usar `compute()` / Isolates para tareas costosas.
+- Widgets costosos: considerar `RepaintBoundary`.
+- Listas: usar `ListView.builder` para grandes colecciones.
+- Comentarios:
+  - `///` para doc comments de APIs públicas.
+  - `//` para aclaraciones a nivel de implementación.
+
+========================================================================
+CHECKLIST QUE CURSOR DEBE SEGUIR ANTES DE APLICAR UN PATCH
+========================================================================
+4. ¿Cambia providers? -> mantener `@riverpod` y pureza / exponer AsyncValue.
+5. ¿Cambia arquitectura? -> pedir confirmación humana.
+6. ¿Genera UI? -> 1) usar App* prefijos 2) respetar 8-pt grid 3) proponer máximo 2 variantes para flows.
+7. Mostrar diff y lista de archivos afectados antes de aplicar.
+
+========================================================================
+ENTREGA, DOCUMENTACIÓN Y CHANGELOG
+========================================================================
+- Cada patch que cambie contratos (APIs, tablas) debe incluir:
+  - actualización de `CHANGELOG.md`
+  - README de la feature con pasos para probar
+  - actualización de `architecture.md` si aplica
+- Documentar cualquier decisión de sincronización / conflict resolution en `infra/` o `docs/`.
+
+Comentarios Inteligentes y Estratégicos
+
+Comentarios // para Lógica Compleja: Utiliza comentarios de una sola línea (//) para explicar la lógica que no es evidente, pero de forma concisa. Por ejemplo: // Filtrar la lista de rutas por las asignadas al conductor.
+
+Comentarios /// (Doc Comments) para la Documentación: Reserva los comentarios de tres barras (///) para documentar clases, funciones y widgets públicos, siguiendo la estructura de Dart. Estos comentarios deben explicar la función, los parámetros y el valor que devuelve. La IA debe entender la diferencia entre estos dos tipos de comentarios.
+
+Explicar Comando o Función Desconocida: Si genera un código que utiliza una función o comando que podría ser nuevo para mi (por ejemplo, un método de Supabase.from('table').select().eq('column', 'value')), debe incluir un comentario breve y al lado de la línea que explique su propósito. Por ejemplo: final data = await supabase.from('rutas').select(); // Obtener todas las rutas de la tabla 'rutas'.
